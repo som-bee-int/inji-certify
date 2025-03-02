@@ -62,6 +62,7 @@ public class CommonUtil {
      * @throws CertifyException
      */
     public static String generateOIDCAtHash(String accessToken) throws CertifyException {
+        log.info(accessToken);
         try {
             MessageDigest digest = MessageDigest.getInstance(ALGO_SHA_256);
             byte[] hash = digest.digest(accessToken.getBytes(StandardCharsets.UTF_8));

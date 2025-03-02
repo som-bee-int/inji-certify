@@ -6,6 +6,7 @@
 package io.mosip.certify.controller;
 
 import io.mosip.certify.core.dto.CredentialRequest;
+import io.mosip.certify.core.dto.CredentialRequestNew;
 import io.mosip.certify.core.dto.CredentialResponse;
 import io.mosip.certify.core.dto.VCError;
 import io.mosip.certify.core.exception.CertifyException;
@@ -40,7 +41,33 @@ public class VCIssuanceController {
      */
     @PostMapping(value = "/credential",produces = "application/json")
     public CredentialResponse getCredential(@Valid @RequestBody CredentialRequest credentialRequest) throws CertifyException {
+        log.info("in certify /credential");
+        log.info("credential requets: {}",credentialRequest);
         return vcIssuanceService.getCredential(credentialRequest);
+    }
+
+    // @PostMapping(value = "/VC",produces = "application/json")
+    // public CredentialResponse getCredentialSingpass( @RequestBody CredentialRequestNew credentialRequest) throws CertifyException {
+    //     log.info("in certify /credentialSingpass");
+    //     log.info("credential requets: {}",credentialRequest);
+    //     //return new CredentialResponse<>();
+    //     return vcIssuanceService.getCredentialNew(credentialRequest);
+    //     //return vcIssuanceService.getCredential(credentialRequest);
+    // }
+
+    @PostMapping(value = "/new/credential",produces = "application/json")
+    public CredentialResponse getCredentialSingpass( @RequestBody CredentialRequestNew credentialRequest) throws CertifyException {
+        log.info("in certify /credentialSingpass");
+        log.info("credential requets: {}",credentialRequest);
+        //return new CredentialResponse<>();
+        return vcIssuanceService.getCredentialNew(credentialRequest);
+        //return vcIssuanceService.getCredential(credentialRequest);
+    }
+
+    @PostMapping(value = "/echo", consumes = "text/plain", produces = "text/plain")
+    public String echo(@RequestBody String input) {
+        log.info("Echo endpoint received input: {}", input);
+        return input;
     }
 
 
@@ -77,6 +104,7 @@ public class VCIssuanceController {
     @GetMapping(value = "/.well-known/openid-credential-issuer",produces = "application/json")
     public Map<String, Object> getMetadata(
             @RequestParam(name = "version", required = false, defaultValue = "latest") String version) {
+                log.info("vc version {}", version);
         return vcIssuanceService.getCredentialIssuerMetadata(version);
     }
 

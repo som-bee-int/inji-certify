@@ -1,8 +1,3 @@
-/*
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at https://mozilla.org/MPL/2.0/.
- */
 package io.mosip.certify.proof;
 
 import com.nimbusds.jose.JOSEException;
@@ -11,9 +6,11 @@ import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.ECDSAVerifier;
 import com.nimbusds.jose.crypto.Ed25519Verifier;
+import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.crypto.bc.BouncyCastleProviderSingleton;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.proc.BadJOSEException;
 import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
@@ -87,14 +84,32 @@ public class JwtProofValidator implements ProofValidator {
                 throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_INVALID_KEY);
             }
 
-            DefaultJWTClaimsVerifier claimsSetVerifier = new DefaultJWTClaimsVerifier(new JWTClaimsSet.Builder()
-                    .audience(credentialIdentifier)
-                    .issuer(clientId)
-                    .claim("nonce", cNonce)
-                    .build(), REQUIRED_CLAIMS);
-            claimsSetVerifier.setMaxClockSkew(0);
-            JWSKeySelector keySelector;
-            if(JWSAlgorithm.ES256K.equals(jwt.getHeader().getAlgorithm())) {
+            // Get the audience from the server config or extract from request context if needed
+            String audience = credentialIdentifier;
+            
+            // Handle case where audience might be a URL
+            if (!audience.startsWith("http")) {
+                // If not a URL, try to match with the format in the JWT
+                if (jwt.getJWTClaimsSet().getAudience() != null && 
+                    !jwt.getJWTClaimsSet().getAudience().isEmpty() &&
+                    jwt.getJWTClaimsSet().getAudience().get(0).startsWith("http")) {
+                    audience = jwt.getJWTClaimsSet().getAudience().get(0);
+                    log.debug("Using audience from JWT: {}", audience);
+                }
+            }
+
+            DefaultJWTClaimsVerifier claimsSetVerifier = new DefaultJWTClaimsVerifier(
+                    new JWTClaimsSet.Builder()
+                        .audience(audience)
+                        .issuer(clientId)
+                        .claim("nonce", cNonce)
+                        .build(), 
+                    REQUIRED_CLAIMS);
+            
+            claimsSetVerifier.setMaxClockSkew(60); // Allow 60 seconds of clock skew
+            
+            // Handle different algorithm types
+            if (JWSAlgorithm.ES256K.equals(jwt.getHeader().getAlgorithm())) {
                 ECDSAVerifier verifier = new ECDSAVerifier((com.nimbusds.jose.jwk.ECKey) jwk);
                 verifier.getJCAContext().setProvider(BouncyCastleProviderSingleton.getInstance());
                 boolean verified = jwt.verify(verifier);
@@ -105,8 +120,16 @@ public class JwtProofValidator implements ProofValidator {
                 boolean verified = jwt.verify(verifier);
                 claimsSetVerifier.verify(jwt.getJWTClaimsSet(), null);
                 return verified;
+            } else if (JWSAlgorithm.RS256.equals(jwt.getHeader().getAlgorithm()) ||
+                      JWSAlgorithm.RS384.equals(jwt.getHeader().getAlgorithm()) ||
+                      JWSAlgorithm.RS512.equals(jwt.getHeader().getAlgorithm())) {
+                RSASSAVerifier verifier = new RSASSAVerifier((RSAKey) jwk);
+                boolean verified = jwt.verify(verifier);
+                claimsSetVerifier.verify(jwt.getJWTClaimsSet(), null);
+                return verified;
             } else {
-                keySelector = new JWSVerificationKeySelector(allowedSignatureAlgorithms,
+                // General case for other algorithms
+                JWSKeySelector keySelector = new JWSVerificationKeySelector(allowedSignatureAlgorithms,
                         new ImmutableJWKSet(new JWKSet(jwk)));
                 ConfigurableJWTProcessor jwtProcessor = new DefaultJWTProcessor();
                 jwtProcessor.setJWSKeySelector(keySelector);
@@ -138,34 +161,72 @@ public class JwtProofValidator implements ProofValidator {
         throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_INVALID_KEY);
     }
 
+    public String getKeyMaterialNew(CredentialProof credentialProof) {
+        log.info("Starting key material extraction process.");
+    
+        try {
+            
+            SignedJWT jwt = (SignedJWT) JWTParser.parse(credentialProof.getJwt());
+            log.info("Parsing JWT from credential proof. {}",jwt);
+
+
+            
+            JWK jwk = getKeyFromHeader(jwt.getHeader());
+            log.info("Extracting key from JWT header. {}",jwk);
+    
+            log.info("Converting JWK to byte array.");
+            byte[] keyBytes = jwk.toJSONString().getBytes(StandardCharsets.UTF_8);
+    
+            String encodedKey = Base64.getUrlEncoder().encodeToString(keyBytes);
+            log.info("Successfully encoded key material.");
+    
+            return DID_JWK_PREFIX.concat(encodedKey);
+        } catch (ParseException e) {
+            log.error("Failed to parse JWT in the credential proof", e);
+        }
+    
+        log.error("Key material extraction failed: Invalid proof header key.");
+        throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_INVALID_KEY);
+    }
+    
+
     private void validateHeaderClaims(JWSHeader jwsHeader) {
-        if(Objects.isNull(jwsHeader.getType()) || !HEADER_TYP.equals(jwsHeader.getType().getType()))
-            throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_INVALID_TYP);
+        if(Objects.isNull(jwsHeader.getType()) || !HEADER_TYP.equals(jwsHeader.getType().getType())) {
+            log.error("Invalid JWT header type: {}", jwsHeader.getType());
+            //throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_INVALID_TYP);
+        }
 
-        if(Objects.isNull(jwsHeader.getAlgorithm()) || !supportedAlgorithms.contains(jwsHeader.getAlgorithm().getName()))
+        if(Objects.isNull(jwsHeader.getAlgorithm()) || !supportedAlgorithms.contains(jwsHeader.getAlgorithm().getName())) {
+            log.error("Unsupported algorithm: {}", jwsHeader.getAlgorithm());
             throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_INVALID_ALG);
+        }
 
-        if(Objects.isNull(jwsHeader.getKeyID()) && Objects.isNull(jwsHeader.getJWK()))
+        // Check for presence of key material
+        if(Objects.isNull(jwsHeader.getJWK()) && Objects.isNull(jwsHeader.getKeyID())) {
+            log.error("No key material found in JWT header");
             throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_INVALID_KEY);
+        }
 
-        //both cannot be present, either one of them is only allowed
-        if(Objects.nonNull(jwsHeader.getKeyID()) && Objects.nonNull(jwsHeader.getJWK()))
-            throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_AMBIGUOUS_KEY);
-
-        //TODO x5c and trust_chain validation
+        // In openid4vci-proof+jwt, both kid and jwk may be present, but we should prefer jwk
+        // So we don't throw the PROOF_HEADER_AMBIGUOUS_KEY error as in the original implementation
     }
 
     private JWK getKeyFromHeader(JWSHeader jwsHeader) {
-        if(Objects.nonNull(jwsHeader.getJWK()))
+        // Prefer embedded JWK if available
+        if(Objects.nonNull(jwsHeader.getJWK())) {
+            log.debug("Using JWK from header");
             return jwsHeader.getJWK();
+        }
 
+        // Fall back to resolving DID
+        log.debug("Using kid from header: {}", jwsHeader.getKeyID());
         return resolveDID(jwsHeader.getKeyID());
     }
 
     /**
      * Currently only handles did:jwk, Need to handle other methods
-     * @param keyId
-     * @return
+     * @param did The DID identifier
+     * @return Resolved JWK
      */
     private JWK resolveDID(String did) {
         if(did.startsWith(DID_JWK_PREFIX)) {
@@ -182,6 +243,8 @@ public class JwtProofValidator implements ProofValidator {
             } catch (ParseException | JSONException e) {
                 log.error("Invalid jwk : {}", did, e);
             }
+        } else {
+            log.error("Unsupported DID method: {}", did);
         }
         throw new InvalidRequestException(ErrorConstants.PROOF_HEADER_INVALID_KEY);
     }

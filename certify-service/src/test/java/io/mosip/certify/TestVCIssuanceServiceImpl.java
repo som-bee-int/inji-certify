@@ -2,6 +2,7 @@ package io.mosip.certify;
 
 import io.mosip.certify.core.constants.ErrorConstants;
 import io.mosip.certify.core.dto.CredentialRequest;
+import io.mosip.certify.core.dto.CredentialRequestNew;
 import io.mosip.certify.core.dto.CredentialResponse;
 import io.mosip.certify.core.exception.InvalidRequestException;
 import io.mosip.certify.core.spi.VCIssuanceService;
@@ -30,5 +31,11 @@ public class TestVCIssuanceServiceImpl implements VCIssuanceService {
     @Override
     public Map<String, Object> getDIDDocument() {
         throw new InvalidRequestException(ErrorConstants.UNSUPPORTED_IN_CURRENT_PLUGIN_MODE);
+    }
+
+    @Override
+    public <T> CredentialResponse<T> getCredentialNew(CredentialRequestNew credentialRequest) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getCredentialNew'");
     }
 }

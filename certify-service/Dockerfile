@@ -87,11 +87,11 @@ RUN mkdir -p ${loader_path}
 
 ENV loader_path_env=${loader_path}
 
-ADD configure_start.sh configure_start.sh
+#ADD configure_start.sh configure_start.sh
 
-RUN chmod +x configure_start.sh
+# RUN chmod +x configure_start.sh
 
-RUN chmod a-w /home/${container_user}/configure_start.sh
+# RUN chmod a-w /home/${container_user}/configure_start.sh
 
 COPY ./target/certify-service-*.jar certify-service.jar
 
@@ -104,7 +104,7 @@ USER ${container_user_uid}:${container_user_gid}
 EXPOSE 8090
 EXPOSE 9010
 
-ENTRYPOINT [ "./configure_start.sh" ]
+# ENTRYPOINT [ "./configure_start.sh" ]
 
 CMD if [ "$is_glowroot_env" = "present" ]; then \
     wget -q "${artifactory_url_env}"/artifactory/libs-release-local/io/mosip/testing/glowroot.zip ; \

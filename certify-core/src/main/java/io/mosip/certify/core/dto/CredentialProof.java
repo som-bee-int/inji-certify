@@ -5,6 +5,9 @@
  */
 package io.mosip.certify.core.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import io.mosip.certify.core.constants.ErrorConstants;
 import lombok.Data;
 

@@ -1,0 +1,28 @@
+{
+    "@context": {
+        "@version": 1.1,
+        "@protected": true,
+        "type": "@type",
+        "schema": "https://schema.org/",
+        "ServiceTechnicianCredential": {
+            "@id": "https://som-bee.github.io/DID/ProfessionalCredential.json#ProfessionalCredential"
+        },
+        "name": "schema:name",
+        "dateOfBirth": "schema:birthDate",
+        "certificationLevel": "schema:Text",
+        "specialization": "schema:Text",
+        "companyAffiliation": "schema:Organization",
+        "yearsOfExperience": "schema:Number",
+        "serviceArea": "schema:Text",
+        "licenseCertificationNumber": "schema:identifier",
+        "dateOfLatestTraining": "schema:Date",
+        "phoneNumber": "schema:telephone",
+        "email": "schema:email",
+        "primarySkills": "schema:ItemList",
+        "secondarySkills": "schema:ItemList",
+        "professionalQualifications": "schema:ItemList",
+        "address": "schema:address",
+        "portfolio": "schema:URL",
+        "membershipOrganizations": "schema:ItemList"
+    }
+}

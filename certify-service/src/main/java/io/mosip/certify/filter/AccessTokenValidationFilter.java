@@ -26,7 +26,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 
-
 @Slf4j
 @Component
 public class AccessTokenValidationFilter extends OncePerRequestFilter {
@@ -48,13 +47,15 @@ public class AccessTokenValidationFilter extends OncePerRequestFilter {
 
     private NimbusJwtDecoder nimbusJwtDecoder;
 
-
     private boolean isJwt(String token) {
-        return token.split("\\.").length == 3;
+        boolean result = token.split("\\.").length == 3;
+        log.info("Token split into {} parts; isJwt = {}", token.split("\\.").length, result);
+        return result;
     }
 
     private NimbusJwtDecoder getNimbusJwtDecoder() {
-        if(nimbusJwtDecoder == null) {
+        if (nimbusJwtDecoder == null) {
+            log.info("Creating NimbusJwtDecoder with JWKS URI: {}", jwkSetUri);
             nimbusJwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
             nimbusJwtDecoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                     new JwtTimestampValidator(),
@@ -65,7 +66,9 @@ public class AccessTokenValidationFilter extends OncePerRequestFilter {
                     new JwtClaimValidator<Instant>(JwtClaimNames.IAT,
                             iat -> iat != null && iat.isBefore(Instant.now(Clock.systemUTC()))),
                     new JwtClaimValidator<Instant>(JwtClaimNames.EXP,
-                            exp -> exp != null && exp.isAfter(Instant.now(Clock.systemUTC())))));
+                            exp -> exp != null && exp.isAfter(Instant.now(Clock.systemUTC())))
+            ));
+            log.info("NimbusJwtDecoder created and configured with issuer: {}", issuerUri);
         }
         return nimbusJwtDecoder;
     }
@@ -73,34 +76,51 @@ public class AccessTokenValidationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
         final String path = request.getRequestURI();
-        return !urlPatterns.contains(path);
+        log.info("Checking if filter should apply for path: {}", path);
+        boolean shouldFilter = urlPatterns.contains(path);
+        log.info("Filter applicable for path {}: {}", path, shouldFilter);
+        return !shouldFilter;
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+        log.info("Starting access token validation for request: {}", request.getRequestURI());
+
         String authorizationHeader = request.getHeader("Authorization");
+        log.info("Authorization header: {}", authorizationHeader);
 
         if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
             String token = authorizationHeader.substring(7);
-            //validate access token no matter if its JWT or Opaque
-            if(isJwt(token)) {
+            log.info("Bearer token extracted. Token length: {}", token.length());
+
+            if (isJwt(token)) {
+                log.info("Token appears to be a JWT; proceeding with JWT validation.");
                 try {
-                    //Verifies signature and claim predicates, If invalid throws exception
+                    log.info("Decoding JWT using NimbusJwtDecoder.");
                     Jwt jwt = getNimbusJwtDecoder().decode(token);
+                    log.info("JWT decoded successfully. Claims: {}", jwt.getClaims());
+
+                    // Populate ParsedAccessToken with claims and calculated at_hash
                     parsedAccessToken.setClaims(new HashMap<>());
                     parsedAccessToken.getClaims().putAll(jwt.getClaims());
                     parsedAccessToken.setAccessTokenHash(CommonUtil.generateOIDCAtHash(token));
                     parsedAccessToken.setActive(true);
+                    log.info("Access token is active and valid. Continuing filter chain.");
+                    
                     filterChain.doFilter(request, response);
                     return;
-
                 } catch (Exception e) {
-                    log.error("Access token validation failed", e);
+                    log.error("Access token validation failed: {}", e.getMessage(), e);
                 }
+            } else {
+                log.warn("Token does not appear to be a JWT; assuming opaque token. Skipping JWT validation.");
             }
+        } else {
+            log.warn("Authorization header missing or does not start with 'Bearer '.");
         }
 
-        log.error("No Bearer / Opaque token provided, continue with the request chain");
+        log.error("No valid Bearer token provided; marking access token as inactive and continuing filter chain.");
         parsedAccessToken.setActive(false);
         filterChain.doFilter(request, response);
     }

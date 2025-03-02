@@ -30,4 +30,6 @@ public interface ProofValidator {
      * @return public key as did:jwk equivalent
      */
     String getKeyMaterial(CredentialProof credentialProof);
+
+    String getKeyMaterialNew(CredentialProof proof);
 }
